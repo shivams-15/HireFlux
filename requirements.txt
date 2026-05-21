@@ -1,0 +1,74 @@
+# Core AI and CrewAI dependencies
+crewai
+google-generativeai
+langchain
+langchain-community
+langchain-google-genai
+
+# Web framework
+streamlit
+fastapi
+uvicorn
+
+# Data processing
+pandas
+numpy
+scipy
+openpyxl
+
+# Environment and configuration
+python-dotenv
+# Google APIs
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+
+# Document parsing
+python-docx
+PyPDF2
+python-pptx
+docx2txt
+pdfplumber
+
+# Machine Learning and NLP
+scikit-learn
+spacy
+nltk
+transformers
+sentence-transformers
+
+# String matching and fuzzy search
+fuzzywuzzy
+python-levenshtein  # For better performance with fuzzywuzzy
+
+# Rate limiting and caching
+ratelimit
+requests-ratelimiter
+requests-cache
+
+# Social media and professional platforms APIs
+linkedin-api
+tweepy
+github3.py
+
+# Additional utilities
+dateparser
+tldextract
+phonenumbers
+
+# Testing dependencies
+pytest
+pytest-cov
+pytest-mock
+pytest-asyncio
+responses
+
+# React frontend dependencies (for package.json)
+# npm install react react-dom @types/react @types/react-dom
+# npm install axios tailwindcss @headlessui/react @heroicons/react
+# npm install react-router-dom react-hook-form @hookform/resolvers
+# npm install recharts react-dropzone react-table
+
+# Database (optional for caching)
+sqlalchemy
+plotly
