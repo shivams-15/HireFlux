@@ -8,7 +8,7 @@ from fuzzywuzzy import fuzz
 import difflib
 from datetime import datetime
 import asyncio
-from utils.gemini_llm import GeminiClient, get_gemini_llm, map_model_name
+from utils.gemini_llm import GeminiClient, get_crewai_llm, map_model_name
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class ValidationAgent:
             associations in recruitment processes. You use advanced techniques including name 
             matching, biographical consistency checks, and timeline validation.""",
             verbose=True,
-            llm=get_gemini_llm(model=self.model_name),
+            llm=get_crewai_llm(model=self.model_name),
             allow_delegation=False
         )
     
@@ -1017,18 +1017,27 @@ OUTPUT REQUIREMENTS:
             }}
             """
             
-            # Call LLM
-            response = self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a validation expert analyzing candidate information."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
+            # Call LLM using GeminiClient
+            response_text = self.llm_client.generate_content(prompt)
             
-            # Parse response
-            llm_analysis = json.loads(response.choices[0].message.content)
+            # Parse response - extract JSON from response
+            try:
+                # Try to parse as JSON directly
+                llm_analysis = json.loads(response_text)
+            except json.JSONDecodeError:
+                # If not valid JSON, try to extract JSON from markdown code blocks
+                import re
+                json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+                if json_match:
+                    llm_analysis = json.loads(json_match.group(1))
+                else:
+                    # If still no valid JSON, create default response
+                    llm_analysis = {
+                        "overall_assessment": response_text[:500],
+                        "inconsistencies": [],
+                        "confidence_score": 70,
+                        "recommendations": []
+                    }
             
             return llm_analysis
         

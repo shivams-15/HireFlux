@@ -1,7 +1,7 @@
 from crewai import Agent, Task
 import logging
 from typing import Dict, List
-from utils.gemini_llm import get_gemini_llm, map_model_name
+from utils.gemini_llm import get_crewai_llm, map_model_name
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class OrchestratorAgent:
             research, validation, and final reporting stages.""",
             verbose=True,
             allow_delegation=True,
-            llm=get_gemini_llm(model=self.model_name)
+            llm=get_crewai_llm(model=self.model_name)
         )
     
     def create_tasks(self, job_description: str, candidates_data: List[Dict]) -> List[Task]:

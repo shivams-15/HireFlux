@@ -4,7 +4,7 @@ from utils.document_parser import DocumentParser
 from typing import Dict, List
 import json
 import os
-from utils.gemini_llm import GeminiClient, get_gemini_llm, map_model_name
+from utils.gemini_llm import GeminiClient, get_crewai_llm, map_model_name
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class ResumeAnalysisAgent:
             You use state-of-the-art LLM technology to understand context and extract 
             information that traditional parsing methods might miss.""",
             verbose=True,
-            llm=get_gemini_llm(model=self.model_name),
+            llm=get_crewai_llm(model=self.model_name),
             allow_delegation=False
         )
     

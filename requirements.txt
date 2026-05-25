@@ -72,3 +72,9 @@ responses
 # Database (optional for caching)
 sqlalchemy
 plotly
+
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+python-dotenv

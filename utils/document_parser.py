@@ -9,6 +9,12 @@ from typing import Dict, List, Union, Optional
 from io import BytesIO
 import json
 
+try:
+    import PyPDF2
+    import pdfplumber
+except ImportError:
+    logger.warning("PDF parsing libraries not available. Install PyPDF2 and pdfplumber for PDF support.")
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -20,6 +26,54 @@ class DocumentParser:
         """Initialize the document parser"""
         logger.info("Initializing DocumentParser")
         self.temp_dir = tempfile.mkdtemp()
+    
+    def parse_pdf(self, file_path: str) -> str:
+        """Parse PDF file and extract text
+        
+        Args:
+            file_path: Path to the PDF file
+            
+        Returns:
+            Extracted text from PDF
+        """
+        try:
+            logger.info(f"Parsing PDF file: {file_path}")
+            text = ""
+            
+            # Try using pdfplumber first (better text extraction)
+            try:
+                import pdfplumber
+                with pdfplumber.open(file_path) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\\n"
+                logger.info(f"Extracted {len(text)} characters using pdfplumber")
+            except Exception as e:
+                logger.warning(f"pdfplumber failed, trying PyPDF2: {str(e)}")
+                
+                # Fallback to PyPDF2
+                try:
+                    import PyPDF2
+                    with open(file_path, 'rb') as file:
+                        pdf_reader = PyPDF2.PdfReader(file)
+                        for page in pdf_reader.pages:
+                            page_text = page.extract_text()
+                            if page_text:
+                                text += page_text + "\\n"
+                    logger.info(f"Extracted {len(text)} characters using PyPDF2")
+                except Exception as e2:
+                    logger.error(f"Both PDF parsers failed: {str(e2)}")
+                    raise ValueError(f"Could not parse PDF file: {str(e2)}")
+            
+            if not text.strip():
+                raise ValueError("No text could be extracted from PDF")
+            
+            return text.strip()
+            
+        except Exception as e:
+            logger.error(f"Error parsing PDF: {str(e)}")
+            raise
         
     def _parse_skills(self, skills_text: Union[str, List]) -> List[str]:
         """Parse skills from text or list
@@ -252,23 +306,26 @@ class DocumentParser:
         """Parse a resume from a URL or file path
         
         Args:
-            candidate_data: Dictionary containing candidate information including CV URL
+            candidate_data: Dictionary containing candidate information including CV URL or resume_text
             
         Returns:
             Dictionary containing parsed resume data
         """
         try:
-            logger.info(f"Parsing resume for candidate: {candidate_data.get('name', 'Unknown')}")
+            logger.info(f"Parsing resume for candidate: {candidate_data.get('name', candidate_data.get('Student Name', 'Unknown'))}")
+            
+            # Check if resume text is already provided (for PDF uploads)
+            resume_text = candidate_data.get('resume_text', '')
             
             # Get the CV URL from candidate data
-            cv_url = candidate_data.get('cv_url', '')
+            cv_url = candidate_data.get('cv_url', candidate_data.get('CV URL', ''))
             
-            if not cv_url:
-                logger.warning(f"No CV URL provided for candidate: {candidate_data.get('name', 'Unknown')}")
+            if not cv_url and not resume_text:
+                logger.warning(f"No CV URL or resume text provided for candidate: {candidate_data.get('name', candidate_data.get('Student Name', 'Unknown'))}")
                 return {
-                    'error': 'No CV URL provided',
+                    'error': 'No CV URL or resume text provided',
                     'source_url': '',
-                    'personal_info': {'name': candidate_data.get('name', 'Unknown')},
+                    'personal_info': {'name': candidate_data.get('name', candidate_data.get('Student Name', 'Unknown'))},
                     'contact_info': {},
                     'education': [],
                     'experience': [],
@@ -278,27 +335,31 @@ class DocumentParser:
                     'additional': {}
                 }
             
-            logger.info(f"CV URL: {cv_url}")
+            if cv_url:
+                logger.info(f"CV URL: {cv_url}")
+            else:
+                logger.info(f"Using provided resume text ({len(resume_text)} characters)")
             
             # For now, we'll use a simple approach that extracts information from the candidate data
             # In a real implementation, this would use LLMs or other tools to parse the actual resume
             
             # Extract skills from candidate data
-            skills = candidate_data.get('skills', [])
+            skills = candidate_data.get('skills', candidate_data.get('Skills', []))
             if isinstance(skills, str):
                 skills = self._parse_skills(skills)
             
             # Create a basic resume structure
             resume_data = {
                 'source_url': cv_url,
+                'resume_text': resume_text,  # Include the resume text
                 'personal_info': {
-                    'name': candidate_data.get('name', 'Unknown'),
-                    'location': candidate_data.get('location', ''),
-                    'summary': candidate_data.get('summary', '')
+                    'name': candidate_data.get('name', candidate_data.get('Student Name', 'Unknown')),
+                    'location': candidate_data.get('location', candidate_data.get('Location', '')),
+                    'summary': candidate_data.get('summary', candidate_data.get('Summary', ''))
                 },
                 'contact_info': {
-                    'emails': [candidate_data.get('email', '')] if candidate_data.get('email') else [],
-                    'phones': [candidate_data.get('phone', '')] if candidate_data.get('phone') else []
+                    'emails': [candidate_data.get('email', candidate_data.get('Email', ''))] if candidate_data.get('email') or candidate_data.get('Email') else [],
+                    'phones': [candidate_data.get('phone', candidate_data.get('Phone', ''))] if candidate_data.get('phone') or candidate_data.get('Phone') else []
                 },
                 'education': [],
                 'experience': [],
@@ -309,9 +370,9 @@ class DocumentParser:
                 },
                 'projects': [],
                 'links': {
-                    'linkedin': candidate_data.get('linkedin', ''),
-                    'github': candidate_data.get('github', ''),
-                    'portfolio': candidate_data.get('portfolio', '')
+                    'linkedin': candidate_data.get('linkedin', candidate_data.get('LinkedIn', '')),
+                    'github': candidate_data.get('github', candidate_data.get('GitHub', '')),
+                    'portfolio': candidate_data.get('portfolio', candidate_data.get('Portfolio', ''))
                 },
                 'additional': {}
             }

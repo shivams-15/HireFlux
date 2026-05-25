@@ -7,7 +7,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
-from utils.gemini_llm import GeminiClient, get_gemini_llm, map_model_name
+from utils.gemini_llm import GeminiClient, get_crewai_llm, map_model_name
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class MatchingAgent:
             candidates for each position. You understand that perfect matches are rare and focus 
             on finding candidates with the highest potential and transferable skills.""",
             verbose=True,
-            llm=get_gemini_llm(model=self.model_name),
+            llm=get_crewai_llm(model=self.model_name),
             allow_delegation=False
         )
     

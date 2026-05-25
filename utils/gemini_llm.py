@@ -4,6 +4,9 @@ Gemini LLM Wrapper for CrewAI Integration
 
 This module provides a wrapper for Google's Gemini API to work with CrewAI.
 It includes both the LangChain integration and a direct client interface.
+
+IMPORTANT: This module uses GEMINI_API_KEY (not GOOGLE_API_KEY).
+GOOGLE_API_KEY should only be used for Google Custom Search.
 """
 
 import os
@@ -27,16 +30,26 @@ class GeminiClient:
             api_key: Gemini API key (optional, defaults to GEMINI_API_KEY env var)
         """
         self.model_name = model
+        # Explicitly use GEMINI_API_KEY, not GOOGLE_API_KEY
         self.api_key = api_key or os.getenv('GEMINI_API_KEY')
         
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
-        # Configure Gemini
-        genai.configure(api_key=self.api_key)
+        # Temporarily remove GOOGLE_API_KEY to avoid conflicts
+        # (GOOGLE_API_KEY should only be used for Google Custom Search)
+        google_api_key_backup = os.environ.pop('GOOGLE_API_KEY', None)
         
-        # Initialize model
-        self.model = genai.GenerativeModel(self.model_name)
+        try:
+            # Configure Gemini with GEMINI_API_KEY only
+            genai.configure(api_key=self.api_key)
+            
+            # Initialize model
+            self.model = genai.GenerativeModel(self.model_name)
+        finally:
+            # Restore GOOGLE_API_KEY if it was set
+            if google_api_key_backup:
+                os.environ['GOOGLE_API_KEY'] = google_api_key_backup
         
         logger.info(f"Initialized Gemini client with model: {self.model_name}")
     
@@ -164,3 +177,23 @@ def map_model_name(openai_model: str) -> str:
         Equivalent Gemini model name (defaults to gemini-3.5-flash)
     """
     return MODEL_MAPPING.get(openai_model, "gemini-3.5-flash")
+
+
+def get_crewai_llm(model: str = "gemini-1.5-flash") -> str:
+    """
+    Get CrewAI-compatible LLM model string
+    
+    CrewAI uses LiteLLM format for model specification.
+    For Gemini models, the format is "gemini/model-name"
+    
+    Args:
+        model: Gemini model name (will be mapped if OpenAI model provided)
+        
+    Returns:
+        LiteLLM-compatible model string for CrewAI
+    """
+    # Map the model name if needed
+    gemini_model = map_model_name(model)
+    
+    # Return in LiteLLM format
+    return f"gemini/{gemini_model}"

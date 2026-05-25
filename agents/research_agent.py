@@ -10,7 +10,7 @@ import os
 import re
 from urllib.parse import urljoin, urlparse
 import time
-from utils.gemini_llm import GeminiClient, get_gemini_llm, map_model_name
+from utils.gemini_llm import GeminiClient, get_crewai_llm, map_model_name
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class ResearchAgent:
             and professional networks. You understand how to verify information accuracy and 
             compile comprehensive candidate profiles while respecting privacy and ethical boundaries.""",
             verbose=True,
-            llm=get_gemini_llm(model=self.model_name),
+            llm=get_crewai_llm(model=self.model_name),
             allow_delegation=False
         )
     
