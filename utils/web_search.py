@@ -17,6 +17,15 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Try to import duckduckgo-search library (more reliable)
+try:
+    from duckduckgo_search import DDGS
+    DDGS_AVAILABLE = True
+    logger.info("Using duckduckgo-search library for web searches")
+except ImportError:
+    DDGS_AVAILABLE = False
+    logger.warning("duckduckgo-search library not available, using HTML scraping fallback")
+
 
 class DuckDuckGoSearch:
     """Free web search using DuckDuckGo (no API key needed)"""
@@ -28,20 +37,69 @@ class DuckDuckGoSearch:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         self.last_request_time = 0
-        self.request_delay = 1.5  # Respect rate limits
-        logger.info("Initialized DuckDuckGo search (free, no API key required)")
+        self.request_delay = 3.0  # Increased delay to avoid rate limiting (was 1.5)
+        self.use_library = DDGS_AVAILABLE
+        logger.info(f"Initialized DuckDuckGo search (free, no API key required) - Using {'library' if self.use_library else 'HTML scraping'}")
     
-    async def search(self, query: str, max_results: int = 10) -> List[Dict]:
+    async def search(self, query: str, max_results: int = 10, retry_count: int = 0) -> List[Dict]:
         """
         Search DuckDuckGo and return results
         
         Args:
             query: Search query string
             max_results: Maximum number of results to return (default: 10)
+            retry_count: Current retry attempt (internal use)
             
         Returns:
             List of search result dictionaries with 'title', 'url', 'snippet'
         """
+        # Use library method if available (more reliable)
+        if self.use_library:
+            return await self._search_with_library(query, max_results)
+        else:
+            return await self._search_with_scraping(query, max_results, retry_count)
+    
+    async def _search_with_library(self, query: str, max_results: int = 10) -> List[Dict]:
+        """Search using duckduckgo-search library (preferred method)"""
+        try:
+            # Rate limiting
+            elapsed = time.time() - self.last_request_time
+            if elapsed < self.request_delay:
+                await asyncio.sleep(self.request_delay - elapsed)
+            
+            # Run synchronous DDGS in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            
+            def sync_search():
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(query, max_results=max_results))
+                    return results
+            
+            raw_results = await loop.run_in_executor(None, sync_search)
+            self.last_request_time = time.time()
+            
+            # Format results
+            formatted_results = []
+            for result in raw_results:
+                formatted_results.append({
+                    'title': result.get('title', ''),
+                    'url': result.get('href', result.get('link', '')),
+                    'snippet': result.get('body', result.get('snippet', '')),
+                    'source': 'DuckDuckGo'
+                })
+            
+            logger.info(f"Found {len(formatted_results)} results for query: '{query}' (using library)")
+            return formatted_results
+            
+        except Exception as e:
+            logger.error(f"DuckDuckGo library search failed: {e}, falling back to scraping")
+            self.use_library = False  # Fallback to scraping for future requests
+            return await self._search_with_scraping(query, max_results, 0)
+    
+    async def _search_with_scraping(self, query: str, max_results: int = 10, retry_count: int = 0) -> List[Dict]:
+        """Search using HTML scraping (fallback method)"""
+        max_retries = 3
+        
         try:
             # Rate limiting
             elapsed = time.time() - self.last_request_time
@@ -65,6 +123,17 @@ class DuckDuckGoSearch:
                 ) as response:
                     
                     self.last_request_time = time.time()
+                    
+                    # Handle 202 (Accepted - async processing)
+                    if response.status == 202:
+                        if retry_count < max_retries:
+                            wait_time = 2 * (retry_count + 1)  # Exponential backoff
+                            logger.info(f"DuckDuckGo returned 202 (processing), retrying in {wait_time}s (attempt {retry_count + 1}/{max_retries})")
+                            await asyncio.sleep(wait_time)
+                            return await self._search_with_scraping(query, max_results, retry_count + 1)
+                        else:
+                            logger.warning(f"DuckDuckGo search timed out after {max_retries} retries (status 202)")
+                            return []
                     
                     if response.status == 200:
                         html = await response.text()
@@ -95,10 +164,10 @@ class DuckDuckGoSearch:
                                         'source': 'DuckDuckGo'
                                     })
                             except Exception as e:
-                                logger.warning(f"Error parsing result: {e}")
+                                logger.debug(f"Error parsing result: {e}")
                                 continue
                         
-                        logger.info(f"Found {len(results)} results for query: '{query}'")
+                        logger.info(f"Found {len(results)} results for query: '{query}' (using HTML scraping)")
                     else:
                         logger.warning(f"DuckDuckGo search returned status {response.status}")
             

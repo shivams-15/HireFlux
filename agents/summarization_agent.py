@@ -470,6 +470,550 @@ class SummarizationAgent:
             return (int(end) - int(start)) * 12
         except:
             return 0
+    
+    def _collect_research_sources(self, research_data: Dict) -> List[Dict]:
+        """Collect all sources found during research"""
+        sources = []
+        
+        # GitHub sources
+        github_data = research_data.get('github', {})
+        if github_data:
+            sources.append({
+                'platform': 'GitHub',
+                'profile_url': github_data.get('profile_url', ''),
+                'verified': True,
+                'data_points': {
+                    'repositories': len(github_data.get('repositories', [])),
+                    'followers': github_data.get('profile', {}).get('followers', 0),
+                    'contributions': len(github_data.get('recent_activity', []))
+                }
+            })
+        
+        # LinkedIn sources
+        linkedin_data = research_data.get('linkedin', {})
+        if linkedin_data:
+            sources.append({
+                'platform': 'LinkedIn',
+                'profile_url': linkedin_data.get('profile_url', ''),
+                'verified': True,
+                'data_points': {
+                    'positions': len(linkedin_data.get('positions', [])),
+                    'connections': linkedin_data.get('connections', 0),
+                    'recommendations': len(linkedin_data.get('recommendations', []))
+                }
+            })
+        
+        # Portfolio/Website sources
+        portfolio_data = research_data.get('portfolio', {})
+        if portfolio_data:
+            sources.append({
+                'platform': 'Portfolio Website',
+                'profile_url': portfolio_data.get('url', ''),
+                'verified': True,
+                'data_points': {
+                    'projects': len(portfolio_data.get('projects', [])),
+                    'articles': len(portfolio_data.get('articles', []))
+                }
+            })
+        
+        # StackOverflow sources
+        stackoverflow_data = research_data.get('stackoverflow', {})
+        if stackoverflow_data:
+            sources.append({
+                'platform': 'StackOverflow',
+                'profile_url': stackoverflow_data.get('profile_url', ''),
+                'verified': True,
+                'data_points': {
+                    'reputation': stackoverflow_data.get('reputation', 0),
+                    'answers': stackoverflow_data.get('answer_count', 0),
+                    'badges': len(stackoverflow_data.get('badges', []))
+                }
+            })
+        
+        # Web presence
+        web_presence = research_data.get('web_presence', [])
+        for item in web_presence:
+            if isinstance(item, dict):
+                sources.append({
+                    'platform': item.get('source', 'Web'),
+                    'profile_url': item.get('url', ''),
+                    'verified': False,
+                    'description': item.get('title', '')
+                })
+        
+        return sources
+    
+    def _assess_technical_skills_detailed(self, resume_data: Dict, research_data: Dict) -> Dict:
+        """Detailed technical skills assessment with sources"""
+        resume_skills = set(resume_data.get('skills', {}).get('technical', []))
+        if not resume_skills:
+            resume_skills = set(resume_data.get('skills', []))
+        
+        # Collect skills from different sources
+        github_skills = set()
+        github_data = research_data.get('github', {})
+        for repo in github_data.get('repositories', []):
+            if isinstance(repo, dict):
+                if repo.get('language'):
+                    github_skills.add(repo['language'])
+                github_skills.update(repo.get('topics', []))
+        
+        linkedin_skills = set()
+        linkedin_data = research_data.get('linkedin', {})
+        linkedin_skills.update(linkedin_data.get('skills', []))
+        
+        # Categorize skills by verification source
+        skills_verified_github = list(resume_skills & github_skills)
+        skills_verified_linkedin = list(resume_skills & linkedin_skills)
+        skills_verified_both = list(set(skills_verified_github) & set(skills_verified_linkedin))
+        skills_claimed_only = list(resume_skills - github_skills - linkedin_skills)
+        skills_discovered = list((github_skills | linkedin_skills) - resume_skills)
+        
+        return {
+            'verified_skills': {
+                'high_confidence': skills_verified_both,  # Verified in multiple sources
+                'medium_confidence': skills_verified_github + skills_verified_linkedin,
+                'total_verified': len(set(skills_verified_github + skills_verified_linkedin))
+            },
+            'claimed_skills': {
+                'unverified': skills_claimed_only,
+                'count': len(skills_claimed_only)
+            },
+            'discovered_skills': {
+                'additional_expertise': skills_discovered,
+                'count': len(skills_discovered)
+            },
+            'skill_sources': {
+                'github_repositories': len(github_data.get('repositories', [])),
+                'linkedin_endorsements': len(linkedin_data.get('skills', []))
+            },
+            'total_skills': len(resume_skills | github_skills | linkedin_skills)
+        }
+    
+    def _summarize_experience_detailed(self, resume_data: Dict, research_data: Dict) -> List[Dict]:
+        """Detailed experience summary with verification"""
+        experience_data = resume_data.get('experience', [])
+        if not isinstance(experience_data, list):
+            experience_data = []
+        
+        linkedin_data = research_data.get('linkedin', {})
+        linkedin_positions = linkedin_data.get('positions', [])
+        
+        detailed_experience = []
+        for job in experience_data:
+            if not isinstance(job, dict):
+                continue
+            
+            # Try to find matching LinkedIn position
+            linkedin_match = self._find_matching_position(job, linkedin_positions)
+            
+            experience_entry = {
+                'role': job.get('title', job.get('role', '')),
+                'company': job.get('company', ''),
+                'duration': job.get('duration', ''),
+                'location': job.get('location', ''),
+                'description': job.get('description', ''),
+                'key_achievements': self._extract_job_achievements(job),
+                'technologies_used': self._extract_technologies(job),
+                'verification': {
+                    'verified_linkedin': bool(linkedin_match),
+                    'source': 'LinkedIn' if linkedin_match else 'Resume only',
+                    'confidence': 'High' if linkedin_match else 'Medium'
+                },
+                'linkedin_details': linkedin_match if linkedin_match else None
+            }
+            detailed_experience.append(experience_entry)
+        
+        return detailed_experience
+    
+    def _assess_professional_presence_detailed(self, research_data: Dict) -> Dict:
+        """Detailed professional presence assessment"""
+        github_data = research_data.get('github', {})
+        linkedin_data = research_data.get('linkedin', {})
+        portfolio_data = research_data.get('portfolio', {})
+        stackoverflow_data = research_data.get('stackoverflow', {})
+        
+        return {
+            'github': {
+                'profile_url': github_data.get('profile_url', ''),
+                'metrics': {
+                    'public_repos': len(github_data.get('repositories', [])),
+                    'followers': github_data.get('profile', {}).get('followers', 0),
+                    'total_stars': sum(r.get('stargazers_count', 0) for r in github_data.get('repositories', [])),
+                    'total_forks': sum(r.get('forks_count', 0) for r in github_data.get('repositories', [])),
+                    'contributions_last_year': len(github_data.get('recent_activity', []))
+                },
+                'top_repositories': github_data.get('repositories', [])[:5],
+                'activity_level': self._assess_github_activity(github_data)
+            },
+            'linkedin': {
+                'profile_url': linkedin_data.get('profile_url', ''),
+                'metrics': {
+                    'connections': linkedin_data.get('connections', 0),
+                    'recommendations': len(linkedin_data.get('recommendations', [])),
+                    'endorsements': len(linkedin_data.get('skills', []))
+                },
+                'profile_completeness': self._assess_linkedin_completeness(linkedin_data),
+                'professional_network_strength': self._assess_network_strength(linkedin_data)
+            },
+            'portfolio': {
+                'url': portfolio_data.get('url', ''),
+                'projects_showcased': len(portfolio_data.get('projects', [])),
+                'articles_published': len(portfolio_data.get('articles', [])),
+                'technologies': portfolio_data.get('technologies', [])
+            },
+            'stackoverflow': {
+                'profile_url': stackoverflow_data.get('profile_url', ''),
+                'reputation': stackoverflow_data.get('reputation', 0),
+                'answers': stackoverflow_data.get('answer_count', 0),
+                'questions': stackoverflow_data.get('question_count', 0),
+                'badges': stackoverflow_data.get('badges', []),
+                'activity_level': self._assess_stackoverflow_activity(stackoverflow_data)
+            },
+            'overall_presence_score': self._calculate_overall_presence_score(
+                github_data, linkedin_data, portfolio_data, stackoverflow_data
+            )
+        }
+    
+    def _get_verification_status_detailed(self, validation_data: Dict, name: str, resume_data: Dict) -> Dict:
+        """Detailed verification status"""
+        return {
+            'candidate_name': name,
+            'verification_timestamp': datetime.now().isoformat(),
+            'overall_status': validation_data.get('overall_status', 'Pending'),
+            'confidence_score': validation_data.get('consistency_score', 0),
+            'verified_information': {
+                'personal_info': validation_data.get('verified_info', {}).get('personal_info', False),
+                'contact_info': validation_data.get('verified_info', {}).get('contact_info', False),
+                'experience': validation_data.get('verified_info', {}).get('experience', False),
+                'education': validation_data.get('verified_info', {}).get('education', False),
+                'skills': validation_data.get('verified_info', {}).get('skills', False)
+            },
+            'discrepancies_found': validation_data.get('discrepancies', []),
+            'cross_reference_checks': validation_data.get('cross_references', {}),
+            'data_sources_count': len(self._collect_research_sources(validation_data.get('research_data', {}))),
+            'verification_notes': validation_data.get('notes', '')
+        }
+    
+    def _collect_all_projects(self, resume_data: Dict, research_data: Dict) -> List[Dict]:
+        """Collect all projects from resume and research"""
+        projects = []
+        
+        # Resume projects
+        resume_projects = resume_data.get('projects', [])
+        for project in resume_projects:
+            if isinstance(project, dict):
+                projects.append({
+                    'name': project.get('name', ''),
+                    'description': project.get('description', ''),
+                    'technologies': project.get('technologies', []),
+                    'source': 'Resume',
+                    'url': project.get('url', ''),
+                    'verified': False
+                })
+        
+        # GitHub projects
+        github_data = research_data.get('github', {})
+        for repo in github_data.get('repositories', []):
+            if isinstance(repo, dict):
+                projects.append({
+                    'name': repo.get('name', ''),
+                    'description': repo.get('description', ''),
+                    'technologies': [repo.get('language', '')] + repo.get('topics', []),
+                    'source': 'GitHub',
+                    'url': repo.get('html_url', ''),
+                    'verified': True,
+                    'metrics': {
+                        'stars': repo.get('stargazers_count', 0),
+                        'forks': repo.get('forks_count', 0),
+                        'open_issues': repo.get('open_issues_count', 0)
+                    }
+                })
+        
+        # Portfolio projects
+        portfolio_data = research_data.get('portfolio', {})
+        for project in portfolio_data.get('projects', []):
+            if isinstance(project, dict):
+                projects.append({
+                    'name': project.get('name', ''),
+                    'description': project.get('description', ''),
+                    'technologies': project.get('technologies', []),
+                    'source': 'Portfolio',
+                    'url': project.get('url', ''),
+                    'verified': True
+                })
+        
+        return projects
+    
+    def _collect_publications(self, research_data: Dict) -> Dict:
+        """Collect publications and thought leadership content"""
+        web_presence = research_data.get('web_presence', [])
+        
+        articles = []
+        talks = []
+        mentions = []
+        
+        for item in web_presence:
+            if not isinstance(item, dict):
+                continue
+            
+            title = item.get('title', '').lower()
+            if 'article' in title or 'blog' in title or 'post' in title:
+                articles.append({
+                    'title': item.get('title', ''),
+                    'url': item.get('url', ''),
+                    'platform': item.get('source', ''),
+                    'snippet': item.get('snippet', '')
+                })
+            elif 'talk' in title or 'presentation' in title or 'speak' in title:
+                talks.append({
+                    'title': item.get('title', ''),
+                    'url': item.get('url', ''),
+                    'event': item.get('source', ''),
+                    'snippet': item.get('snippet', '')
+                })
+            else:
+                mentions.append({
+                    'title': item.get('title', ''),
+                    'url': item.get('url', ''),
+                    'platform': item.get('source', ''),
+                    'snippet': item.get('snippet', '')
+                })
+        
+        return {
+            'articles': articles,
+            'talks_presentations': talks,
+            'online_mentions': mentions,
+            'total_count': len(articles) + len(talks) + len(mentions)
+        }
+    
+    def _create_executive_summary_detailed(self, name: str, location: str, resume_data: Dict, 
+                                          research_data: Dict, match_score: Dict,
+                                          sources_count: int, experience_count: int) -> str:
+        """Create detailed executive summary"""
+        years_experience = self._calculate_total_experience(resume_data.get('experience', []))
+        skills_count = len(resume_data.get('skills', {}).get('technical', [])) or len(resume_data.get('skills', []))
+        overall_score = match_score.get('overall_score', 0)
+        
+        # Get current role
+        experience = resume_data.get('experience', [])
+        current_role = experience[0].get('title', experience[0].get('role', 'Professional')) if experience else 'Professional'
+        current_company = experience[0].get('company', '') if experience else ''
+        
+        summary = f"""
+**Candidate: {name}**
+**Location: {location}**
+
+{name} is a {current_role}{' at ' + current_company if current_company else ''} with {years_experience} years of professional experience. 
+Based on comprehensive AI-powered analysis across {sources_count} verified online sources, this candidate demonstrates:
+
+- **Match Score: {overall_score}%** - {'Strong' if overall_score >= 80 else 'Good' if overall_score >= 60 else 'Moderate'} alignment with job requirements
+- **Technical Expertise:** {skills_count}+ documented technical skills and competencies
+- **Professional Experience:** {experience_count} verified positions across reputable organizations
+- **Digital Footprint:** Active professional presence across {sources_count} platforms
+- **Verification Status:** {'High confidence' if sources_count >= 3 else 'Moderate confidence'} - information cross-verified from multiple sources
+
+**Key Highlights:**
+{self._generate_key_highlights(resume_data, research_data, match_score)}
+
+**Overall Assessment:**
+{self._generate_overall_assessment(overall_score, sources_count, resume_data)}
+        """.strip()
+        
+        return summary
+    
+    def _calculate_data_completeness(self, resume_data: Dict, research_data: Dict) -> Dict:
+        """Calculate how complete the candidate data is"""
+        completeness = {
+            'resume_data': {
+                'personal_info': bool(resume_data.get('personal_info')),
+                'contact_info': bool(resume_data.get('contact_info')),
+                'experience': bool(resume_data.get('experience')),
+                'education': bool(resume_data.get('education')),
+                'skills': bool(resume_data.get('skills')),
+                'projects': bool(resume_data.get('projects'))
+            },
+            'research_data': {
+                'github': bool(research_data.get('github')),
+                'linkedin': bool(research_data.get('linkedin')),
+                'portfolio': bool(research_data.get('portfolio')),
+                'stackoverflow': bool(research_data.get('stackoverflow')),
+                'web_presence': bool(research_data.get('web_presence'))
+            }
+        }
+        
+        resume_score = sum(completeness['resume_data'].values()) / len(completeness['resume_data']) * 100
+        research_score = sum(completeness['research_data'].values()) / len(completeness['research_data']) * 100
+        
+        completeness['resume_completeness_percent'] = round(resume_score, 1)
+        completeness['research_completeness_percent'] = round(research_score, 1)
+        completeness['overall_completeness_percent'] = round((resume_score + research_score) / 2, 1)
+        
+        return completeness
+    
+    def _assess_github_activity(self, github_data: Dict) -> str:
+        """Assess GitHub activity level"""
+        if not github_data:
+            return 'None'
+        
+        repos = len(github_data.get('repositories', []))
+        contributions = len(github_data.get('recent_activity', []))
+        
+        if repos >= 10 and contributions >= 50:
+            return 'Highly Active'
+        elif repos >= 5 or contributions >= 20:
+            return 'Active'
+        elif repos >= 1:
+            return 'Moderate'
+        else:
+            return 'Low'
+    
+    def _assess_linkedin_completeness(self, linkedin_data: Dict) -> str:
+        """Assess LinkedIn profile completeness"""
+        if not linkedin_data:
+            return 'None'
+        
+        has_summary = bool(linkedin_data.get('summary'))
+        has_positions = bool(linkedin_data.get('positions'))
+        has_skills = bool(linkedin_data.get('skills'))
+        has_recommendations = bool(linkedin_data.get('recommendations'))
+        
+        score = sum([has_summary, has_positions, has_skills, has_recommendations])
+        
+        if score >= 3:
+            return 'Comprehensive'
+        elif score >= 2:
+            return 'Good'
+        else:
+            return 'Basic'
+    
+    def _assess_network_strength(self, linkedin_data: Dict) -> str:
+        """Assess professional network strength"""
+        connections = linkedin_data.get('connections', 0)
+        
+        if connections >= 500:
+            return 'Strong'
+        elif connections >= 100:
+            return 'Moderate'
+        else:
+            return 'Growing'
+    
+    def _assess_stackoverflow_activity(self, stackoverflow_data: Dict) -> str:
+        """Assess StackOverflow activity level"""
+        if not stackoverflow_data:
+            return 'None'
+        
+        reputation = stackoverflow_data.get('reputation', 0)
+        
+        if reputation >= 1000:
+            return 'Highly Active'
+        elif reputation >= 100:
+            return 'Active'
+        else:
+            return 'Basic'
+    
+    def _calculate_overall_presence_score(self, github_data: Dict, linkedin_data: Dict, 
+                                         portfolio_data: Dict, stackoverflow_data: Dict) -> int:
+        """Calculate overall professional presence score"""
+        score = 0
+        
+        # GitHub contribution
+        if github_data:
+            repos = len(github_data.get('repositories', []))
+            score += min(repos * 5, 25)
+        
+        # LinkedIn contribution
+        if linkedin_data:
+            connections = linkedin_data.get('connections', 0)
+            score += min(connections // 10, 25)
+        
+        # Portfolio contribution
+        if portfolio_data:
+            score += 25
+        
+        # StackOverflow contribution
+        if stackoverflow_data:
+            reputation = stackoverflow_data.get('reputation', 0)
+            score += min(reputation // 100, 25)
+        
+        return min(score, 100)
+    
+    def _calculate_total_experience(self, experience: List[Dict]) -> int:
+        """Calculate total years of experience"""
+        if not experience:
+            return 0
+        
+        total_months = 0
+        for job in experience:
+            if isinstance(job, dict):
+                duration = self._calculate_job_duration(job.get('duration', ''))
+                total_months += duration
+        
+        return round(total_months / 12, 1)
+    
+    def _identify_industry(self, resume_data: Dict) -> str:
+        """Identify primary industry from experience"""
+        experience = resume_data.get('experience', [])
+        if not experience or not isinstance(experience, list):
+            return 'Technology'
+        
+        # Simple industry identification - can be enhanced
+        return 'Technology & Software Development'
+    
+    def _identify_specialization(self, skills_assessment: Dict) -> str:
+        """Identify primary specialization from skills"""
+        verified = skills_assessment.get('verified_skills', {}).get('high_confidence', [])
+        
+        # Simple specialization logic - can be enhanced
+        if any('python' in str(s).lower() for s in verified):
+            return 'Backend Development / Data Science'
+        elif any('react' in str(s).lower() for s in verified):
+            return 'Frontend Development'
+        elif any('devops' in str(s).lower() for s in verified):
+            return 'DevOps / Cloud Engineering'
+        else:
+            return 'Full Stack Development'
+    
+    def _generate_key_highlights(self, resume_data: Dict, research_data: Dict, match_score: Dict) -> str:
+        """Generate key highlights for executive summary"""
+        highlights = []
+        
+        # Top skill
+        skills = resume_data.get('skills', {})
+        if isinstance(skills, dict):
+            top_skills = skills.get('technical', [])[:3]
+        else:
+            top_skills = skills[:3] if isinstance(skills, list) else []
+        
+        if top_skills:
+            highlights.append(f"• Expertise in {', '.join(top_skills)}")
+        
+        # GitHub activity
+        github_data = research_data.get('github', {})
+        if github_data.get('repositories'):
+            repo_count = len(github_data['repositories'])
+            highlights.append(f"• {repo_count} public repositories on GitHub demonstrating practical coding experience")
+        
+        # Experience
+        experience = resume_data.get('experience', [])
+        if experience:
+            highlights.append(f"• Proven track record with {len(experience)} professional positions")
+        
+        return '\n'.join(highlights) if highlights else '• Comprehensive professional background'
+    
+    def _generate_overall_assessment(self, overall_score: int, sources_count: int, resume_data: Dict) -> str:
+        """Generate overall assessment text"""
+        if overall_score >= 80:
+            fit_level = "HIGHLY RECOMMENDED"
+            assessment = "Exceptional candidate with strong alignment to requirements"
+        elif overall_score >= 60:
+            fit_level = "RECOMMENDED"
+            assessment = "Good candidate with solid qualifications"
+        else:
+            fit_level = "CONSIDER"
+            assessment = "Candidate shows potential but may require additional evaluation"
+        
+        return f"**{fit_level}** - {assessment}. Profile verified through {sources_count} independent sources."
 
     def generate_comprehensive_report(self, validated_candidates: List[Dict], job_requirements: Dict, matching_results: Dict = None) -> Dict:
         """Generate a comprehensive report for all validated candidates

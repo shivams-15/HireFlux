@@ -50,6 +50,9 @@ requests-cache
 aiohttp
 beautifulsoup4
 lxml
+duckduckgo-search  # Free web search API
+beautifulsoup4
+lxml
 
 # Social media and professional platforms APIs (DEPRECATED - using web search)
 # linkedin-api
