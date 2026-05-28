@@ -120,10 +120,16 @@ export default function ResultsView({ results }: ResultsViewProps) {
         
         <div className="space-y-4">
           {candidateProfiles.slice(0, 5).map((candidate: any, index: number) => {
-            const basicInfo = candidate?.basic_information || {}
-            const validation = candidate?.validation_assessment || {}
+            // Handle multiple possible data structures
+            const basicInfo = candidate?.basic_information || candidate?.personal_info || {}
+            const candidateName = candidate?.name || basicInfo?.name || 'Unknown Candidate'
+            const candidateLocation = candidate?.location || basicInfo?.location || 'N/A'
+            const candidateEmail = candidate?.contact_info?.emails?.[0] || basicInfo?.email || 'N/A'
+            const matchScore = candidate?.match_score || candidate?.overall_recommendation?.confidence_level || 0
+            
+            const validation = candidate?.validation_assessment || candidate?.verification_status || {}
             const recommendation = candidate?.overall_recommendation || {}
-            const professionalSummary = candidate?.professional_summary || {}
+            const professionalSummary = candidate?.professional_summary || candidate?.experience_summary || {}
             const technicalAssessment = candidate?.technical_assessment || {}
             const isExpanded = expandedCandidate === index
 
@@ -147,7 +153,7 @@ export default function ResultsView({ results }: ResultsViewProps) {
                       </div>
                       <div>
                         <h3 className="text-xl font-semibold text-neutral-900">
-                          {basicInfo.name || 'Unknown Candidate'}
+                          {candidateName}
                         </h3>
                         <p className="text-sm text-neutral-600">
                           {professionalSummary?.current_role || 'N/A'} at {professionalSummary?.current_company || 'N/A'}
@@ -156,16 +162,16 @@ export default function ResultsView({ results }: ResultsViewProps) {
                     </div>
 
                     <div className="flex flex-wrap gap-4 text-sm text-neutral-600 ml-13">
-                      {basicInfo.email && (
+                      {candidateEmail && candidateEmail !== 'N/A' && (
                         <div className="flex items-center space-x-1">
                           <Mail className="w-4 h-4" />
-                          <span>{basicInfo.email}</span>
+                          <span>{candidateEmail}</span>
                         </div>
                       )}
-                      {basicInfo.location && (
+                      {candidateLocation && candidateLocation !== 'N/A' && (
                         <div className="flex items-center space-x-1">
                           <MapPin className="w-4 h-4" />
-                          <span>{basicInfo.location}</span>
+                          <span>{candidateLocation}</span>
                         </div>
                       )}
                     </div>
@@ -174,7 +180,7 @@ export default function ResultsView({ results }: ResultsViewProps) {
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
                       <div className="text-2xl font-bold text-primary-700">
-                        {recommendation?.confidence_level || 0}%
+                        {matchScore}%
                       </div>
                       <div className="text-xs text-neutral-600">Match Score</div>
                     </div>

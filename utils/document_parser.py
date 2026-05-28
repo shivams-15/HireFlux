@@ -15,6 +15,12 @@ try:
 except ImportError:
     logger.warning("PDF parsing libraries not available. Install PyPDF2 and pdfplumber for PDF support.")
 
+try:
+    from utils.gemini_llm import GeminiClient
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -22,10 +28,29 @@ logger = logging.getLogger(__name__)
 class DocumentParser:
     """Parser for various document formats"""
     
-    def __init__(self):
-        """Initialize the document parser"""
+    def __init__(self, use_gemini: bool = True, gemini_model: str = "gemini-3.1-flash-lite"):
+        """Initialize the document parser
+        
+        Args:
+            use_gemini: Whether to use Gemini for enhanced extraction (default: True)
+            gemini_model: Gemini model to use for extraction (default: gemini-3.1-flash-lite)
+        """
         logger.info("Initializing DocumentParser")
         self.temp_dir = tempfile.mkdtemp()
+        self.use_gemini = use_gemini and GEMINI_AVAILABLE
+        
+        if self.use_gemini:
+            try:
+                self.gemini_client = GeminiClient(model=gemini_model)
+                logger.info(f"Gemini-enhanced document parsing enabled with model: {gemini_model}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Gemini client: {e}. Falling back to traditional parsing.")
+                self.use_gemini = False
+                self.gemini_client = None
+        else:
+            self.gemini_client = None
+            if not GEMINI_AVAILABLE:
+                logger.info("Gemini not available. Using traditional document parsing.")
     
     def parse_pdf(self, file_path: str) -> str:
         """Parse PDF file and extract text
@@ -69,11 +94,45 @@ class DocumentParser:
             if not text.strip():
                 raise ValueError("No text could be extracted from PDF")
             
+            # Optionally enhance with Gemini for better structure and extraction
+            if self.use_gemini and self.gemini_client and len(text) > 100:
+                try:
+                    enhanced_text = self._enhance_extraction_with_gemini(text)
+                    if enhanced_text:
+                        logger.info("Enhanced PDF extraction using Gemini")
+                        return enhanced_text
+                except Exception as e:
+                    logger.warning(f"Gemini enhancement failed, using standard extraction: {e}")
+            
             return text.strip()
             
         except Exception as e:
             logger.error(f"Error parsing PDF: {str(e)}")
             raise
+    
+    def _enhance_extraction_with_gemini(self, raw_text: str) -> Optional[str]:
+        """Enhance extracted text using Gemini for better structure
+        
+        Args:
+            raw_text: Raw text extracted from document
+            
+        Returns:
+            Enhanced, structured text
+        """
+        try:
+            prompt = f"""You are parsing a resume/CV document. The following text was extracted from a PDF but may have formatting issues.
+Please clean up the text, preserve all information, and structure it properly:
+
+{raw_text[:4000]}
+
+Return the cleaned and properly structured text maintaining all original information."""
+            
+            enhanced = self.gemini_client.generate_content(prompt)
+            return enhanced if enhanced else raw_text
+            
+        except Exception as e:
+            logger.error(f"Error enhancing with Gemini: {e}")
+            return None
         
     def _parse_skills(self, skills_text: Union[str, List]) -> List[str]:
         """Parse skills from text or list
@@ -340,52 +399,57 @@ class DocumentParser:
             else:
                 logger.info(f"Using provided resume text ({len(resume_text)} characters)")
             
-            # For now, we'll use a simple approach that extracts information from the candidate data
-            # In a real implementation, this would use LLMs or other tools to parse the actual resume
+            # If we have resume text, use Gemini to extract structured data
+            if resume_text and self.use_gemini and self.gemini_client:
+                logger.info(f"Using Gemini to extract structured data from resume text ({len(resume_text)} chars)")
+                resume_data = self._extract_structured_data_with_gemini(resume_text, cv_url)
+            else:
+                # Fallback: use simple approach that extracts information from the candidate data
+                logger.warning("Gemini not available or no resume text - using basic extraction")
+                
+                # Extract skills from candidate data
+                skills = candidate_data.get('skills', candidate_data.get('Skills', []))
+                if isinstance(skills, str):
+                    skills = self._parse_skills(skills)
+                
+                # Create a basic resume structure
+                resume_data = {
+                    'source_url': cv_url,
+                    'resume_text': resume_text,
+                    'personal_info': {
+                        'name': candidate_data.get('name', candidate_data.get('Student Name', 'Unknown')),
+                        'location': candidate_data.get('location', candidate_data.get('Location', '')),
+                        'summary': candidate_data.get('summary', candidate_data.get('Summary', ''))
+                    },
+                    'contact_info': {
+                        'emails': [candidate_data.get('email', candidate_data.get('Email', ''))] if candidate_data.get('email') or candidate_data.get('Email') else [],
+                        'phones': [candidate_data.get('phone', candidate_data.get('Phone', ''))] if candidate_data.get('phone') or candidate_data.get('Phone') else []
+                    },
+                    'education': [],
+                    'experience': [],
+                    'skills': {
+                        'technical': skills,
+                        'soft': [],
+                        'all_skills': skills
+                    },
+                    'projects': [],
+                    'links': {
+                        'linkedin': candidate_data.get('linkedin', candidate_data.get('LinkedIn', '')),
+                        'github': candidate_data.get('github', candidate_data.get('GitHub', '')),
+                        'portfolio': candidate_data.get('portfolio', candidate_data.get('Portfolio', ''))
+                    },
+                    'additional': {}
+                }
+                
+                # Add any education information if available
+                if 'education' in candidate_data:
+                    resume_data['education'] = [{'institution': candidate_data['education']}]
+                
+                # Add any experience information if available
+                if 'experience' in candidate_data:
+                    resume_data['experience'] = [{'company': candidate_data['experience']}]
             
-            # Extract skills from candidate data
-            skills = candidate_data.get('skills', candidate_data.get('Skills', []))
-            if isinstance(skills, str):
-                skills = self._parse_skills(skills)
-            
-            # Create a basic resume structure
-            resume_data = {
-                'source_url': cv_url,
-                'resume_text': resume_text,  # Include the resume text
-                'personal_info': {
-                    'name': candidate_data.get('name', candidate_data.get('Student Name', 'Unknown')),
-                    'location': candidate_data.get('location', candidate_data.get('Location', '')),
-                    'summary': candidate_data.get('summary', candidate_data.get('Summary', ''))
-                },
-                'contact_info': {
-                    'emails': [candidate_data.get('email', candidate_data.get('Email', ''))] if candidate_data.get('email') or candidate_data.get('Email') else [],
-                    'phones': [candidate_data.get('phone', candidate_data.get('Phone', ''))] if candidate_data.get('phone') or candidate_data.get('Phone') else []
-                },
-                'education': [],
-                'experience': [],
-                'skills': {
-                    'technical': skills,
-                    'soft': [],
-                    'all_skills': skills
-                },
-                'projects': [],
-                'links': {
-                    'linkedin': candidate_data.get('linkedin', candidate_data.get('LinkedIn', '')),
-                    'github': candidate_data.get('github', candidate_data.get('GitHub', '')),
-                    'portfolio': candidate_data.get('portfolio', candidate_data.get('Portfolio', ''))
-                },
-                'additional': {}
-            }
-            
-            # Add any education information if available
-            if 'education' in candidate_data:
-                resume_data['education'] = [{'institution': candidate_data['education']}]
-            
-            # Add any experience information if available
-            if 'experience' in candidate_data:
-                resume_data['experience'] = [{'company': candidate_data['experience']}]
-            
-            logger.info(f"Successfully parsed resume for candidate: {candidate_data.get('name', 'Unknown')}")
+            logger.info(f"Successfully parsed resume for candidate: {resume_data.get('personal_info', {}).get('name', 'Unknown')}")
             return resume_data
             
         except Exception as e:
@@ -394,6 +458,179 @@ class DocumentParser:
                 'error': str(e),
                 'source_url': candidate_data.get('cv_url', ''),
                 'personal_info': {'name': candidate_data.get('name', 'Unknown')},
+                'contact_info': {},
+                'education': [],
+                'experience': [],
+                'skills': {'technical': [], 'soft': [], 'all_skills': []},
+                'projects': [],
+                'links': {},
+                'additional': {}
+            }
+    
+    def _extract_structured_data_with_gemini(self, resume_text: str, source_url: str = '') -> Dict:
+        """Extract structured data from resume text using Gemini
+        
+        Args:
+            resume_text: Raw text extracted from resume
+            source_url: Source URL of the resume
+            
+        Returns:
+            Structured resume data dictionary
+        """
+        try:
+            prompt = f"""You are an expert resume parser. Extract ALL information from this resume into a structured JSON format.
+
+RESUME TEXT:
+{resume_text}
+
+Extract and return a valid JSON object with this exact structure:
+{{
+  "personal_info": {{
+    "name": "Full name of the candidate",
+    "location": "City, State/Country",
+    "summary": "Professional summary or objective"
+  }},
+  "contact_info": {{
+    "emails": ["email addresses found"],
+    "phones": ["phone numbers found"],
+    "linkedin": "LinkedIn URL if found",
+    "github": "GitHub URL if found",
+    "portfolio": "Portfolio URL if found",
+    "other_links": ["other professional URLs"]
+  }},
+  "education": [
+    {{
+      "degree": "Degree name",
+      "field": "Field of study",
+      "institution": "University/College name",
+      "location": "Location",
+      "graduation_date": "Graduation date or year",
+      "gpa": "GPA if mentioned",
+      "honors": "Honors/awards if any"
+    }}
+  ],
+  "experience": [
+    {{
+      "title": "Job title",
+      "company": "Company name",
+      "location": "Location",
+      "start_date": "Start date",
+      "end_date": "End date or Present",
+      "description": "Job description",
+      "responsibilities": ["List of responsibilities"],
+      "achievements": ["List of achievements"]
+    }}
+  ],
+  "skills": {{
+    "technical": ["All technical skills, programming languages, frameworks, tools"],
+    "soft": ["Soft skills like leadership, communication"],
+    "certifications": ["Certifications"],
+    "languages": ["Human languages with proficiency"]
+  }},
+  "projects": [
+    {{
+      "name": "Project name",
+      "description": "Project description",
+      "technologies": ["Technologies used"],
+      "url": "Project URL if available",
+      "highlights": ["Key achievements/features"]
+    }}
+  ],
+  "additional": {{
+    "awards": ["Awards and recognitions"],
+    "publications": ["Publications"],
+    "volunteer": ["Volunteer experience"],
+    "interests": ["Professional interests"]
+  }}
+}}
+
+IMPORTANT:
+- Extract EVERY piece of information found in the resume
+- If a field is not found, use empty string "" or empty array []
+- Ensure all technical skills are captured (languages, frameworks, tools, platforms)
+- Extract ALL URLs (LinkedIn, GitHub, portfolio, project links)
+- Return ONLY valid JSON, no additional text
+- Be thorough and accurate"""
+
+            response = self.gemini_client.generate_content(prompt)
+            
+            # Clean the response to extract JSON
+            response_text = response.strip()
+            
+            # Remove markdown code blocks if present
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            elif response_text.startswith('```'):
+                response_text = response_text[3:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            
+            response_text = response_text.strip()
+            
+            # Parse JSON
+            import json
+            extracted_data = json.loads(response_text)
+            
+            # Merge contact URLs into links
+            contact = extracted_data.get('contact_info', {})
+            links = {
+                'linkedin': contact.get('linkedin', ''),
+                'github': contact.get('github', ''),
+                'portfolio': contact.get('portfolio', ''),
+                'other': contact.get('other_links', [])
+            }
+            
+            # Create final structured data
+            structured_data = {
+                'source_url': source_url,
+                'resume_text': resume_text[:500] + '...' if len(resume_text) > 500 else resume_text,  # Store preview
+                'personal_info': extracted_data.get('personal_info', {}),
+                'contact_info': {
+                    'emails': contact.get('emails', []),
+                    'phones': contact.get('phones', [])
+                },
+                'education': extracted_data.get('education', []),
+                'experience': extracted_data.get('experience', []),
+                'skills': extracted_data.get('skills', {'technical': [], 'soft': [], 'all_skills': []}),
+                'projects': extracted_data.get('projects', []),
+                'links': links,
+                'additional': extracted_data.get('additional', {})
+            }
+            
+            # Ensure all_skills combines technical and soft skills
+            if 'all_skills' not in structured_data['skills']:
+                structured_data['skills']['all_skills'] = (
+                    structured_data['skills'].get('technical', []) + 
+                    structured_data['skills'].get('soft', [])
+                )
+            
+            logger.info(f"Successfully extracted structured data: {structured_data['personal_info'].get('name', 'Unknown')}")
+            return structured_data
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON from Gemini response: {e}")
+            logger.error(f"Response text: {response_text[:500]}")
+            # Return basic structure with error
+            return {
+                'error': f'JSON parsing error: {str(e)}',
+                'source_url': source_url,
+                'resume_text': resume_text[:500] + '...',
+                'personal_info': {'name': 'Extraction Failed'},
+                'contact_info': {},
+                'education': [],
+                'experience': [],
+                'skills': {'technical': [], 'soft': [], 'all_skills': []},
+                'projects': [],
+                'links': {},
+                'additional': {}
+            }
+        except Exception as e:
+            logger.error(f"Error extracting structured data with Gemini: {e}")
+            return {
+                'error': str(e),
+                'source_url': source_url,
+                'resume_text': resume_text[:500] + '...',
+                'personal_info': {'name': 'Extraction Error'},
                 'contact_info': {},
                 'education': [],
                 'experience': [],

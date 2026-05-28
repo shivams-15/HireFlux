@@ -46,10 +46,15 @@ ratelimit
 requests-ratelimiter
 requests-cache
 
-# Social media and professional platforms APIs
-linkedin-api
-tweepy
-github3.py
+# Web scraping and async HTTP
+aiohttp
+beautifulsoup4
+lxml
+
+# Social media and professional platforms APIs (DEPRECATED - using web search)
+# linkedin-api
+# tweepy
+# github3.py
 
 # Additional utilities
 dateparser

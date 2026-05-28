@@ -148,6 +148,7 @@ MODEL_MAPPING = {
     "gemini-3.1-flash-lite": "gemini-3.1-flash-lite",  # Budget stable
     "gemini-3-flash-preview": "gemini-3-flash-preview",  # Frontier preview
     "gemini-3.1-pro-preview": "gemini-3.1-pro-preview",  # Advanced preview
+    "gemini-3.0-pro": "gemini-3.0-pro",  # Stable pro for research
     
     # Gemini 2.5 series (Current stable generation)
     "gemini-2.5-flash": "gemini-2.5-flash",  # Proven workhorse

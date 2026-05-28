@@ -9,7 +9,14 @@ from utils.gemini_llm import GeminiClient, get_crewai_llm, map_model_name
 logger = logging.getLogger(__name__)
 
 class ResumeAnalysisAgent:
-    def __init__(self, model="gemini-3.5-flash"):
+    def __init__(self, model="gemini-3.1-flash-lite"):
+        """
+        Initialize Resume Analysis Agent
+        
+        Args:
+            model: Gemini model for content extraction (default: gemini-3.1-flash-lite)
+                  gemini-3.1-flash-lite is optimized for fast, budget-friendly document parsing
+        """
         self.model_name = map_model_name(model)
         self.parser = DocumentParser()
         self.llm_client = GeminiClient(model=self.model_name)

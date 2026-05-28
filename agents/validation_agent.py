@@ -116,7 +116,9 @@ OUTPUT REQUIREMENTS:
         validated_candidates = []
         
         for i, candidate_data in enumerate(researched_candidates):
-            candidate_name = self._extract_candidate_name(candidate_data)
+            # Extract name from the correct nested structure
+            original_candidate = candidate_data.get('original_candidate_data', {}).get('candidate', {})
+            candidate_name = self._extract_candidate_name(original_candidate)
             logger.info(f"Validating candidate {i+1}/{len(researched_candidates)}: {candidate_name}")
             
             try:

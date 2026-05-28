@@ -78,34 +78,90 @@ class SummarizationAgent:
                                research_data: Dict, 
                                match_score: Dict,
                                validation_data: Dict) -> Dict:
-        """Create a comprehensive candidate profile"""
+        """Create a comprehensive candidate profile with all sources and verification"""
+        
+        # Extract name and basic info first
+        name = resume_data.get('personal_info', {}).get('name', 'Unknown Candidate')
+        if not name or name == 'Unknown Candidate':
+            name = resume_data.get('name', 'Unknown Candidate')
+        
+        location = resume_data.get('personal_info', {}).get('location', 'N/A')
+        
+        # Collect all research sources
+        sources_found = self._collect_research_sources(research_data)
+        
+        # Get comprehensive skills assessment with sources
+        skills_assessment = self._assess_technical_skills_detailed(resume_data, research_data)
+        
+        # Get experience with verification
+        experience_summary = self._summarize_experience_detailed(resume_data, research_data)
+        
+        # Get education with sources
+        education_details = self._summarize_education(resume_data, research_data)
+        
+        # Get achievements from multiple sources
+        achievements = self._extract_achievements(resume_data, research_data)
+        
+        # Professional presence metrics
+        professional_presence = self._assess_professional_presence_detailed(research_data)
+        
+        # Verification status
+        verification = self._get_verification_status_detailed(validation_data, name, resume_data)
+        
+        # Match analysis
+        match_analysis = self._analyze_match(match_score)
+        
+        # Risk assessment
+        risk_factors = self._identify_risk_factors(resume_data, research_data, validation_data)
+        
+        # Projects from resume and research
+        projects = self._collect_all_projects(resume_data, research_data)
+        
+        # Publications and thought leadership
+        publications = self._collect_publications(research_data)
+        
+        # Executive summary with context
+        executive_summary = self._create_executive_summary_detailed(
+            name, location, resume_data, research_data, match_score, 
+            len(sources_found), len(experience_summary)
+        )
         
         profile = {
-            'executive_summary': self._create_executive_summary(
-                resume_data, research_data, match_score
-            ),
-            'technical_assessment': self._assess_technical_skills(
-                resume_data, research_data
-            ),
-            'experience_summary': self._summarize_experience(
-                resume_data, research_data
-            ),
-            'education_certifications': self._summarize_education(
-                resume_data, research_data
-            ),
-            'achievements': self._extract_achievements(
-                resume_data, research_data
-            ),
-            'professional_presence': self._assess_professional_presence(
-                research_data
-            ),
-            'verification_status': self._get_verification_status(
-                validation_data
-            ),
-            'match_analysis': self._analyze_match(match_score),
-            'risk_factors': self._identify_risk_factors(
-                resume_data, research_data, validation_data
-            )
+            'candidate_id': resume_data.get('candidate_id', ''),
+            'name': name,
+            'location': location,
+            'personal_info': resume_data.get('personal_info', {}),
+            'contact_info': resume_data.get('contact_info', {}),
+            'match_score': match_score.get('overall_score', 0),
+            
+            # Comprehensive profile sections
+            'executive_summary': executive_summary,
+            'professional_summary': {
+                'total_experience_years': self._calculate_total_experience(
+                    resume_data.get('experience', [])
+                ),
+                'current_role': experience_summary[0].get('role', 'N/A') if experience_summary else 'N/A',
+                'current_company': experience_summary[0].get('company', 'N/A') if experience_summary else 'N/A',
+                'industry': self._identify_industry(resume_data),
+                'specialization': self._identify_specialization(skills_assessment)
+            },
+            
+            'technical_assessment': skills_assessment,
+            'experience_summary': experience_summary,
+            'education_certifications': education_details,
+            'projects': projects,
+            'achievements': achievements,
+            'publications_thought_leadership': publications,
+            
+            'professional_presence': professional_presence,
+            'verification_status': verification,
+            'match_analysis': match_analysis,
+            'risk_factors': risk_factors,
+            
+            # Sources and verification tracking
+            'research_sources': sources_found,
+            'data_completeness': self._calculate_data_completeness(resume_data, research_data),
+            'last_updated': datetime.now().isoformat()
         }
         
         return profile

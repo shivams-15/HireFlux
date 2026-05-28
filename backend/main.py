@@ -114,12 +114,20 @@ async def upload_candidates(file: UploadFile = File(...)):
         
         # Check if it's a PDF resume or spreadsheet
         if file.filename.lower().endswith('.pdf'):
-            # Parse single PDF resume
+            # Parse single PDF resume and extract structured data
             resume_text = parser.parse_pdf(file_path)
+            
+            # Use Gemini to extract basic info for preview
+            parsed_resume = parser._extract_structured_data_with_gemini(resume_text, file_path)
+            
             candidates_data = [{
-                'name': 'Resume Candidate',
+                'Student Name': parsed_resume.get('personal_info', {}).get('name', 'Candidate'),
+                'name': parsed_resume.get('personal_info', {}).get('name', 'Candidate'),
+                'CV URL': file_path,
+                'cv_url': file_path,
+                'Email': parsed_resume.get('contact_info', {}).get('emails', [''])[0],
+                'email': parsed_resume.get('contact_info', {}).get('emails', [''])[0],
                 'resume_text': resume_text,
-                'email': '',
                 'source_file': file.filename
             }]
             file_type = 'resume'
@@ -231,15 +239,19 @@ async def process_recruitment_pipeline(job_id: str, candidates_file: str, job_de
         
         # Check if it's a PDF resume or spreadsheet
         if candidates_file.lower().endswith('.pdf'):
-            # Parse single PDF resume
+            # Parse single PDF resume and extract structured data
             resume_text = parser.parse_pdf(candidates_file)
+            
+            # Use Gemini to extract basic info
+            parsed_resume = parser._extract_structured_data_with_gemini(resume_text, candidates_file)
+            
             candidates_data = [{
-                'Student Name': 'Resume Candidate',
-                'name': 'Resume Candidate',  # Also add lowercase for compatibility
+                'Student Name': parsed_resume.get('personal_info', {}).get('name', 'Candidate'),
+                'name': parsed_resume.get('personal_info', {}).get('name', 'Candidate'),
                 'CV URL': candidates_file,
-                'cv_url': candidates_file,  # Also add lowercase for parse_resume
-                'Email': '',
-                'email': '',  # Also add lowercase
+                'cv_url': candidates_file,
+                'Email': parsed_resume.get('contact_info', {}).get('emails', [''])[0],
+                'email': parsed_resume.get('contact_info', {}).get('emails', [''])[0],
                 'resume_text': resume_text,
                 'source_file': os.path.basename(candidates_file)
             }]
