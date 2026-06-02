@@ -50,7 +50,7 @@ requests-cache
 aiohttp
 beautifulsoup4
 lxml
-duckduckgo-search  # Free web search API
+ddgs  # Free web search API (renamed from duckduckgo-search)
 beautifulsoup4
 lxml
 

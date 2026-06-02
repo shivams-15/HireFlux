@@ -79,6 +79,7 @@ class SummarizationAgent:
                                match_score: Dict,
                                validation_data: Dict) -> Dict:
         """Create a comprehensive candidate profile with all sources and verification"""
+        normalized_research_data = self._normalize_research_data(research_data)
         
         # Extract name and basic info first
         name = resume_data.get('personal_info', {}).get('name', 'Unknown Candidate')
@@ -88,41 +89,41 @@ class SummarizationAgent:
         location = resume_data.get('personal_info', {}).get('location', 'N/A')
         
         # Collect all research sources
-        sources_found = self._collect_research_sources(research_data)
+        sources_found = self._collect_research_sources(normalized_research_data)
         
         # Get comprehensive skills assessment with sources
-        skills_assessment = self._assess_technical_skills_detailed(resume_data, research_data)
+        skills_assessment = self._assess_technical_skills_detailed(resume_data, normalized_research_data)
         
         # Get experience with verification
-        experience_summary = self._summarize_experience_detailed(resume_data, research_data)
+        experience_summary = self._summarize_experience_detailed(resume_data, normalized_research_data)
         
         # Get education with sources
-        education_details = self._summarize_education(resume_data, research_data)
+        education_details = self._summarize_education(resume_data, normalized_research_data)
         
         # Get achievements from multiple sources
-        achievements = self._extract_achievements(resume_data, research_data)
+        achievements = self._extract_achievements(resume_data, normalized_research_data)
         
         # Professional presence metrics
-        professional_presence = self._assess_professional_presence_detailed(research_data)
+        professional_presence = self._assess_professional_presence_detailed(normalized_research_data)
         
         # Verification status
-        verification = self._get_verification_status_detailed(validation_data, name, resume_data)
+        verification = self._get_verification_status_detailed(validation_data, name, resume_data, normalized_research_data)
         
         # Match analysis
         match_analysis = self._analyze_match(match_score)
         
         # Risk assessment
-        risk_factors = self._identify_risk_factors(resume_data, research_data, validation_data)
+        risk_factors = self._identify_risk_factors(resume_data, normalized_research_data, validation_data)
         
         # Projects from resume and research
-        projects = self._collect_all_projects(resume_data, research_data)
+        projects = self._collect_all_projects(resume_data, normalized_research_data)
         
         # Publications and thought leadership
-        publications = self._collect_publications(research_data)
+        publications = self._collect_publications(normalized_research_data)
         
         # Executive summary with context
         executive_summary = self._create_executive_summary_detailed(
-            name, location, resume_data, research_data, match_score, 
+            name, location, resume_data, normalized_research_data, match_score, 
             len(sources_found), len(experience_summary)
         )
         
@@ -160,11 +161,72 @@ class SummarizationAgent:
             
             # Sources and verification tracking
             'research_sources': sources_found,
-            'data_completeness': self._calculate_data_completeness(resume_data, research_data),
+            'data_completeness': self._calculate_data_completeness(resume_data, normalized_research_data),
             'last_updated': datetime.now().isoformat()
         }
         
         return profile
+
+    def _normalize_research_data(self, research_data: Dict) -> Dict:
+        """Normalize research output into a stable schema used by summarization helpers."""
+        if not isinstance(research_data, dict):
+            return {}
+
+        if 'web_search_results' not in research_data:
+            return research_data
+
+        web_results = research_data.get('web_search_results', {}) or {}
+        github_results = web_results.get('github', []) or research_data.get('github_findings', []) or []
+        linkedin_results = web_results.get('linkedin', []) or research_data.get('linkedin_findings', []) or []
+        portfolio_results = web_results.get('portfolio', []) or research_data.get('portfolio_findings', []) or []
+        stackoverflow_results = web_results.get('stackoverflow', []) or []
+        other_results = web_results.get('other', []) or []
+
+        def first_url(items: List[Dict]) -> str:
+            for item in items:
+                if isinstance(item, dict) and item.get('url'):
+                    return item.get('url', '')
+            return ''
+
+        return {
+            'github': {
+                'profile_url': first_url(github_results),
+                'repositories': [],
+                'recent_activity': [],
+                'profile': {},
+                'search_hits': github_results,
+            } if github_results else {},
+            'linkedin': {
+                'profile_url': first_url(linkedin_results),
+                'positions': [],
+                'recommendations': [],
+                'skills': [],
+                'connections': 0,
+                'search_hits': linkedin_results,
+            } if linkedin_results else {},
+            'portfolio': {
+                'url': first_url(portfolio_results),
+                'projects': [],
+                'articles': [],
+                'technologies': [],
+                'search_hits': portfolio_results,
+            } if portfolio_results else {},
+            'stackoverflow': {
+                'profile_url': first_url(stackoverflow_results),
+                'reputation': 0,
+                'answer_count': 0,
+                'question_count': 0,
+                'badges': [],
+                'search_hits': stackoverflow_results,
+            } if stackoverflow_results else {},
+            'web_presence': [
+                *github_results,
+                *linkedin_results,
+                *portfolio_results,
+                *stackoverflow_results,
+                *other_results,
+            ],
+        }
     
     def generate_comparative_report(self, 
                                   candidates: List[Dict], 
@@ -675,13 +737,13 @@ class SummarizationAgent:
             )
         }
     
-    def _get_verification_status_detailed(self, validation_data: Dict, name: str, resume_data: Dict) -> Dict:
+    def _get_verification_status_detailed(self, validation_data: Dict, name: str, resume_data: Dict, research_data: Dict) -> Dict:
         """Detailed verification status"""
         return {
             'candidate_name': name,
             'verification_timestamp': datetime.now().isoformat(),
             'overall_status': validation_data.get('overall_status', 'Pending'),
-            'confidence_score': validation_data.get('consistency_score', 0),
+            'confidence_score': validation_data.get('confidence_score', validation_data.get('consistency_score', 0)),
             'verified_information': {
                 'personal_info': validation_data.get('verified_info', {}).get('personal_info', False),
                 'contact_info': validation_data.get('verified_info', {}).get('contact_info', False),
@@ -691,7 +753,7 @@ class SummarizationAgent:
             },
             'discrepancies_found': validation_data.get('discrepancies', []),
             'cross_reference_checks': validation_data.get('cross_references', {}),
-            'data_sources_count': len(self._collect_research_sources(validation_data.get('research_data', {}))),
+            'data_sources_count': len(self._collect_research_sources(research_data)),
             'verification_notes': validation_data.get('notes', '')
         }
     
@@ -1253,13 +1315,13 @@ Based on comprehensive AI-powered analysis across {sources_count} verified onlin
         for profile in candidate_profiles:
             # Extract key metrics for ranking
             match_score = profile.get('match_analysis', {}).get('overall_score', 0)
-            verification_score = profile.get('verification_status', {}).get('consistency_score', 0)
+            verification_score = profile.get('verification_status', {}).get('confidence_score', 0)
             
             # Calculate a composite score
             composite_score = (match_score * 0.7) + (verification_score * 0.3)
             
             ranked_candidates.append({
-                'name': profile.get('executive_summary', '').split(' is ')[0] if ' is ' in profile.get('executive_summary', '') else "Unknown",
+                'name': profile.get('name', 'Unknown'),
                 'match_score': match_score,
                 'verification_score': verification_score,
                 'composite_score': composite_score,
@@ -1283,15 +1345,15 @@ Based on comprehensive AI-powered analysis across {sources_count} verified onlin
         # By technical skills
         tech_ranked = sorted(
             candidate_profiles,
-            key=lambda x: len(x.get('technical_assessment', {}).get('verified', [])),
+            key=lambda x: x.get('technical_assessment', {}).get('verified_skills', {}).get('total_verified', 0),
             reverse=True
         )
         
         alternative_rankings['by_technical_skills'] = [
             {
-                'name': profile.get('executive_summary', '').split(' is ')[0] if ' is ' in profile.get('executive_summary', '') else "Unknown",
-                'verified_skills_count': len(profile.get('technical_assessment', {}).get('verified', [])),
-                'key_skills': profile.get('technical_assessment', {}).get('verified', [])[:5]
+                'name': profile.get('name', 'Unknown'),
+                'verified_skills_count': profile.get('technical_assessment', {}).get('verified_skills', {}).get('total_verified', 0),
+                'key_skills': profile.get('technical_assessment', {}).get('verified_skills', {}).get('high_confidence', [])[:5]
             }
             for profile in tech_ranked[:5]
         ]
@@ -1305,7 +1367,7 @@ Based on comprehensive AI-powered analysis across {sources_count} verified onlin
         
         alternative_rankings['by_experience'] = [
             {
-                'name': profile.get('executive_summary', '').split(' is ')[0] if ' is ' in profile.get('executive_summary', '') else "Unknown",
+                'name': profile.get('name', 'Unknown'),
                 'experience_score': self._calculate_experience_score(profile),
                 'key_experience': [exp.get('role', '') for exp in profile.get('experience_summary', [])[:2]]
             }
@@ -1315,15 +1377,17 @@ Based on comprehensive AI-powered analysis across {sources_count} verified onlin
         # By verification
         verification_ranked = sorted(
             candidate_profiles,
-            key=lambda x: x.get('verification_status', {}).get('consistency_score', 0),
+            key=lambda x: x.get('verification_status', {}).get('confidence_score', 0),
             reverse=True
         )
         
         alternative_rankings['by_verification'] = [
             {
-                'name': profile.get('executive_summary', '').split(' is ')[0] if ' is ' in profile.get('executive_summary', '') else "Unknown",
-                'verification_score': profile.get('verification_status', {}).get('consistency_score', 0),
-                'verified_info': list(profile.get('verification_status', {}).get('verified_info', {}).keys())
+                'name': profile.get('name', 'Unknown'),
+                'verification_score': profile.get('verification_status', {}).get('confidence_score', 0),
+                'verified_info': [
+                    field for field, is_verified in profile.get('verification_status', {}).get('verified_information', {}).items() if is_verified
+                ]
             }
             for profile in verification_ranked[:5]
         ]

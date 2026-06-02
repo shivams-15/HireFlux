@@ -13,6 +13,7 @@ import {
   XCircle
 } from 'lucide-react'
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 
 interface ResultsViewProps {
   results: any
@@ -24,6 +25,44 @@ export default function ResultsView({ results }: ResultsViewProps) {
   const finalReport = results?.final_report || {}
   const executiveSummary = finalReport?.executive_summary || {}
   const candidateProfiles = finalReport?.candidate_profiles || []
+
+  const toPercent = (value: unknown): number => {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.min(100, Math.round(value)))
+    if (typeof value === 'string') {
+      const parsed = Number.parseFloat(value.replace('%', '').trim())
+      if (Number.isFinite(parsed)) return Math.max(0, Math.min(100, Math.round(parsed)))
+    }
+    return 0
+  }
+
+  const overallSourcesChecked = candidateProfiles.reduce((sum: number, candidate: any) => {
+    const sourceCount =
+      candidate?.verification_status?.data_sources_count ??
+      candidate?.research_sources?.length ??
+      0
+    return sum + (Number.isFinite(sourceCount) ? Number(sourceCount) : 0)
+  }, 0)
+
+  const averageConfidence = candidateProfiles.length > 0
+    ? Math.round(
+        candidateProfiles.reduce((sum: number, candidate: any) => {
+          const confidence =
+            candidate?.verification_status?.confidence_score ??
+            candidate?.overall_recommendation?.confidence_level ??
+            0
+          return sum + toPercent(confidence)
+        }, 0) / candidateProfiles.length
+      )
+    : 0
+
+  const topCandidatesCount =
+    results?.top_candidates_count ||
+    candidateProfiles.filter((candidate: any) => toPercent(candidate?.match_score) > 0).length ||
+    candidateProfiles.length
+
+  const summaryMarkdown = typeof executiveSummary === 'string'
+    ? executiveSummary
+    : executiveSummary?.overview || executiveSummary?.summary || ''
 
   const getStatusColor = (status: string) => {
     const statusLower = status?.toLowerCase() || ''
@@ -76,23 +115,31 @@ export default function ResultsView({ results }: ResultsViewProps) {
           </div>
           <div className="text-center p-4 bg-success-light/10 rounded-lg">
             <div className="text-3xl font-bold text-success-dark mb-1">
-              {results?.top_candidates_count || 0}
+              {topCandidatesCount}
             </div>
             <div className="text-sm text-neutral-600">Top Candidates</div>
           </div>
           <div className="text-center p-4 bg-primary-50 rounded-lg">
             <div className="text-3xl font-bold text-primary-700 mb-1">
-              95%
+              {averageConfidence}%
             </div>
             <div className="text-sm text-neutral-600">Avg Confidence</div>
           </div>
           <div className="text-center p-4 bg-primary-50 rounded-lg">
             <div className="text-3xl font-bold text-primary-700 mb-1">
-              12
+              {overallSourcesChecked}
             </div>
             <div className="text-sm text-neutral-600">Sources Checked</div>
           </div>
         </div>
+
+        {summaryMarkdown && (
+          <div className="border-t border-neutral-200 pt-4 mb-4">
+            <ReactMarkdown className="markdown-body text-sm text-neutral-700">
+              {summaryMarkdown}
+            </ReactMarkdown>
+          </div>
+        )}
 
         {executiveSummary?.key_findings && (
           <div className="border-t border-neutral-200 pt-4">
@@ -125,7 +172,7 @@ export default function ResultsView({ results }: ResultsViewProps) {
             const candidateName = candidate?.name || basicInfo?.name || 'Unknown Candidate'
             const candidateLocation = candidate?.location || basicInfo?.location || 'N/A'
             const candidateEmail = candidate?.contact_info?.emails?.[0] || basicInfo?.email || 'N/A'
-            const matchScore = candidate?.match_score || candidate?.overall_recommendation?.confidence_level || 0
+            const matchScore = toPercent(candidate?.match_score || candidate?.overall_recommendation?.confidence_level)
             
             const validation = candidate?.validation_assessment || candidate?.verification_status || {}
             const recommendation = candidate?.overall_recommendation || {}
@@ -161,7 +208,7 @@ export default function ResultsView({ results }: ResultsViewProps) {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-4 text-sm text-neutral-600 ml-13">
+                    <div className="flex flex-wrap gap-4 text-sm text-neutral-600 ml-[52px]">
                       {candidateEmail && candidateEmail !== 'N/A' && (
                         <div className="flex items-center space-x-1">
                           <Mail className="w-4 h-4" />
@@ -208,9 +255,9 @@ export default function ResultsView({ results }: ResultsViewProps) {
                     {candidate?.executive_summary && (
                       <div className="mb-6 p-4 bg-primary-50 rounded-lg">
                         <h4 className="font-semibold text-neutral-900 mb-2">Executive Summary</h4>
-                        <div className="text-sm text-neutral-700 whitespace-pre-line">
+                        <ReactMarkdown className="markdown-body text-sm text-neutral-700">
                           {candidate.executive_summary}
-                        </div>
+                        </ReactMarkdown>
                       </div>
                     )}
                     
@@ -348,9 +395,11 @@ export default function ResultsView({ results }: ResultsViewProps) {
                               <div className="flex items-center justify-between p-2 bg-neutral-50 rounded">
                                 <span>Overall Status</span>
                                 <span className={`font-medium ${
-                                  candidate.verification_status.overall_status === 'Verified' 
-                                    ? 'text-success-dark' 
-                                    : 'text-warning-dark'
+                                    candidate.verification_status.overall_status === 'Verified' 
+                                      ? 'text-success-dark' 
+                                      : candidate.verification_status.overall_status === 'Invalid'
+                                      ? 'text-error-dark'
+                                      : 'text-warning-dark'
                                 }`}>
                                   {candidate.verification_status.overall_status}
                                 </span>
@@ -398,6 +447,12 @@ export default function ResultsView({ results }: ResultsViewProps) {
                                   </p>
                                 </div>
                               )}
+
+                              {!candidate.professional_presence.github?.metrics && !candidate.professional_presence.linkedin?.metrics && (
+                                <div className="p-3 bg-warning-light/10 border border-warning-light rounded text-warning-dark text-xs">
+                                  External profile data is limited. This usually means web research returned few verifiable sources.
+                                </div>
+                              )}
                               
                               <div className="p-2 bg-primary-50 rounded">
                                 <p className="font-medium text-neutral-900">Overall Presence Score</p>
@@ -412,15 +467,19 @@ export default function ResultsView({ results }: ResultsViewProps) {
                         {/* Key Strengths */}
                         <div>
                           <h4 className="font-semibold text-neutral-900 mb-2">Key Strengths</h4>
-                          <ul className="space-y-1 text-sm text-neutral-600">
-                            {(candidate?.strengths_and_concerns?.key_strengths || 
-                              candidate?.match_analysis?.strengths || []).slice(0, 5).map((strength: string, i: number) => (
-                              <li key={i} className="flex items-start space-x-2">
-                                <CheckCircle className="w-4 h-4 text-success-light flex-shrink-0 mt-0.5" />
-                                <span>{strength}</span>
-                              </li>
-                            ))}
-                          </ul>
+                          {(candidate?.strengths_and_concerns?.key_strengths || candidate?.match_analysis?.strengths || []).length > 0 ? (
+                            <ul className="space-y-1 text-sm text-neutral-600">
+                              {(candidate?.strengths_and_concerns?.key_strengths || 
+                                candidate?.match_analysis?.strengths || []).slice(0, 5).map((strength: string, i: number) => (
+                                <li key={i} className="flex items-start space-x-2">
+                                  <CheckCircle className="w-4 h-4 text-success-light flex-shrink-0 mt-0.5" />
+                                  <span>{strength}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-neutral-500">Strength signals are limited because verified research data is low.</p>
+                          )}
                         </div>
 
                         {/* Recommendation */}

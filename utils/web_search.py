@@ -9,22 +9,32 @@ No API keys required - completely free to use.
 import logging
 import asyncio
 import aiohttp
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import json
 from bs4 import BeautifulSoup
 import urllib.parse
 import time
+import importlib
 
 logger = logging.getLogger(__name__)
 
-# Try to import duckduckgo-search library (more reliable)
+# Prefer the renamed package (`ddgs`) and keep backward compatibility.
+DDGS: Any = None
 try:
-    from duckduckgo_search import DDGS
+    DDGS = importlib.import_module("ddgs").DDGS
     DDGS_AVAILABLE = True
-    logger.info("Using duckduckgo-search library for web searches")
-except ImportError:
-    DDGS_AVAILABLE = False
-    logger.warning("duckduckgo-search library not available, using HTML scraping fallback")
+    DDGS_PROVIDER = "ddgs"
+    logger.info("Using ddgs library for web searches")
+except (ImportError, AttributeError):
+    try:
+        DDGS = importlib.import_module("duckduckgo_search").DDGS
+        DDGS_AVAILABLE = True
+        DDGS_PROVIDER = "duckduckgo_search"
+        logger.info("Using duckduckgo_search library for web searches")
+    except (ImportError, AttributeError):
+        DDGS_AVAILABLE = False
+        DDGS_PROVIDER = None
+        logger.warning("No DDGS library available, using HTML scraping fallback")
 
 
 class DuckDuckGoSearch:
@@ -39,7 +49,8 @@ class DuckDuckGoSearch:
         self.last_request_time = 0
         self.request_delay = 3.0  # Increased delay to avoid rate limiting (was 1.5)
         self.use_library = DDGS_AVAILABLE
-        logger.info(f"Initialized DuckDuckGo search (free, no API key required) - Using {'library' if self.use_library else 'HTML scraping'}")
+        provider = DDGS_PROVIDER if self.use_library else "HTML scraping"
+        logger.info(f"Initialized DuckDuckGo search (free, no API key required) - Using {provider}")
     
     async def search(self, query: str, max_results: int = 10, retry_count: int = 0) -> List[Dict]:
         """
