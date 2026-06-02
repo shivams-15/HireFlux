@@ -2,18 +2,20 @@
 
 from crewai import Agent, Task
 import logging
-from typing import Dict, List
+from typing import Dict, List, Any
 import json
 import os
 import re
 from datetime import datetime
-from utils.gemini_llm import get_crewai_llm, map_model_name
+from utils.gemini_llm import GeminiClient, get_crewai_llm, map_model_name
 
 logger = logging.getLogger(__name__)
 
 class SummarizationAgent:
     def __init__(self, model="gemini-2.5-pro"):
         self.model_name = map_model_name(model)
+        self.report_structuring_model = "gemini-3.1-flash-lite"
+        self._report_structuring_client = None
         self.agent = Agent(
             role="Summarization Agent",
             goal="Create comprehensive and structured candidate profiles",
@@ -24,6 +26,173 @@ class SummarizationAgent:
             verbose=True,
             llm=get_crewai_llm(model=self.model_name)
         )
+
+    def _get_report_structuring_client(self):
+        """Lazy-init client used for fixed-schema JSON report generation."""
+        if self._report_structuring_client is not None:
+            return self._report_structuring_client
+
+        try:
+            self._report_structuring_client = GeminiClient(model=self.report_structuring_model)
+            return self._report_structuring_client
+        except Exception as e:
+            logger.warning(f"Could not initialize report structuring LLM ({self.report_structuring_model}): {e}")
+            return None
+
+    def _fixed_report_schema(self) -> Dict[str, Any]:
+        """Return the required top-level schema with defaults."""
+        return {
+            'executive_summary': '',
+            'candidate_profiles': [],
+            'candidate_pool_analysis': {},
+            'final_rankings': {
+                'primary_ranking': [],
+                'alternative_rankings': {
+                    'by_technical_skills': [],
+                    'by_experience': [],
+                    'by_verification': []
+                }
+            },
+            'detailed_analysis': {
+                'skills_gap_analysis': {},
+                'experience_distribution': {},
+                'education_analysis': {}
+            },
+            'recommendations': [],
+            'metrics': {},
+            'generation_timestamp': ''
+        }
+
+    def _deep_merge_dicts(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively merge dictionaries, preserving base values when override is sparse."""
+        merged = dict(base)
+        for key, value in override.items():
+            base_value = merged.get(key)
+            if isinstance(base_value, dict) and isinstance(value, dict):
+                merged[key] = self._deep_merge_dicts(base_value, value)
+            else:
+                merged[key] = value
+        return merged
+
+    def _coerce_to_fixed_schema(self, maybe_report: Any, fallback_report: Dict[str, Any]) -> Dict[str, Any]:
+        """Coerce potentially imperfect JSON into required fixed structure."""
+        schema = self._fixed_report_schema()
+        report = maybe_report if isinstance(maybe_report, dict) else {}
+
+        result = dict(schema)
+        for key in schema.keys():
+            if key in report:
+                result[key] = report[key]
+
+        # Enforce nested structure and sane fallbacks.
+        if not isinstance(result.get('candidate_profiles'), list):
+            result['candidate_profiles'] = fallback_report.get('candidate_profiles', [])
+        else:
+            fallback_profiles = fallback_report.get('candidate_profiles', [])
+            if len(result['candidate_profiles']) != len(fallback_profiles):
+                result['candidate_profiles'] = fallback_profiles
+            else:
+                merged_profiles = []
+                for idx, llm_profile in enumerate(result['candidate_profiles']):
+                    fallback_profile = fallback_profiles[idx] if idx < len(fallback_profiles) else {}
+                    if isinstance(llm_profile, dict) and isinstance(fallback_profile, dict):
+                        merged_profiles.append(self._deep_merge_dicts(fallback_profile, llm_profile))
+                    else:
+                        merged_profiles.append(fallback_profile)
+                result['candidate_profiles'] = merged_profiles
+
+        if not isinstance(result.get('recommendations'), list):
+            result['recommendations'] = fallback_report.get('recommendations', [])
+
+        if not isinstance(result.get('final_rankings'), dict):
+            result['final_rankings'] = fallback_report.get('final_rankings', schema['final_rankings'])
+        else:
+            fr = result['final_rankings']
+            if 'primary_ranking' not in fr or not isinstance(fr.get('primary_ranking'), list):
+                fr['primary_ranking'] = fallback_report.get('final_rankings', {}).get('primary_ranking', [])
+            elif fr.get('primary_ranking') and not all(isinstance(item, dict) for item in fr.get('primary_ranking', [])):
+                fr['primary_ranking'] = fallback_report.get('final_rankings', {}).get('primary_ranking', [])
+            if 'alternative_rankings' not in fr or not isinstance(fr.get('alternative_rankings'), dict):
+                fr['alternative_rankings'] = fallback_report.get('final_rankings', {}).get('alternative_rankings', schema['final_rankings']['alternative_rankings'])
+            else:
+                ar = fr['alternative_rankings']
+                for alt_key in ['by_technical_skills', 'by_experience', 'by_verification']:
+                    if alt_key not in ar or not isinstance(ar.get(alt_key), list):
+                        ar[alt_key] = fallback_report.get('final_rankings', {}).get('alternative_rankings', {}).get(alt_key, [])
+                    elif ar.get(alt_key) and not all(isinstance(item, dict) for item in ar.get(alt_key, [])):
+                        ar[alt_key] = fallback_report.get('final_rankings', {}).get('alternative_rankings', {}).get(alt_key, [])
+
+        if not isinstance(result.get('detailed_analysis'), dict):
+            result['detailed_analysis'] = fallback_report.get('detailed_analysis', schema['detailed_analysis'])
+        else:
+            da = result['detailed_analysis']
+            for da_key in ['skills_gap_analysis', 'experience_distribution', 'education_analysis']:
+                if da_key not in da or not isinstance(da.get(da_key), dict):
+                    da[da_key] = fallback_report.get('detailed_analysis', {}).get(da_key, {})
+
+        # Always keep deterministic generation timestamp.
+        result['generation_timestamp'] = fallback_report.get('generation_timestamp', datetime.now().isoformat())
+        return result
+
+    def _extract_json_payload(self, llm_text: str) -> Dict[str, Any]:
+        """Extract first valid JSON object from LLM text."""
+        if not llm_text:
+            return {}
+
+        # First attempt: parse entire response
+        try:
+            parsed = json.loads(llm_text)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            pass
+
+        # Second attempt: parse fenced or embedded object
+        match = re.search(r"\{[\s\S]*\}", llm_text)
+        if not match:
+            return {}
+
+        try:
+            parsed = json.loads(match.group(0))
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+    def _llm_structure_report(self, deterministic_report: Dict[str, Any], job_requirements: Dict) -> Dict[str, Any]:
+        """Use Gemini 3.1 Flash Lite to produce the final fixed-schema JSON report."""
+        client = self._get_report_structuring_client()
+        if client is None:
+            return deterministic_report
+
+        schema = self._fixed_report_schema()
+        prompt = f"""
+You are a strict JSON transformation engine for recruitment reports.
+
+Task:
+1. Read INPUT_REPORT and JOB_REQUIREMENTS.
+2. Produce exactly one JSON object following REQUIRED_SCHEMA.
+3. Do not include markdown, explanation, comments, or code fences.
+4. Preserve all useful information from INPUT_REPORT and improve consistency, naming clarity, and section quality.
+5. Keep numeric values as numbers.
+6. Never invent candidates.
+7. Do not simplify or collapse candidate_profiles. Keep full per-candidate nested fields from INPUT_REPORT unless correcting obvious schema issues.
+
+REQUIRED_SCHEMA:
+{json.dumps(schema, indent=2)}
+
+INPUT_REPORT:
+{json.dumps(deterministic_report, indent=2)}
+
+JOB_REQUIREMENTS:
+{json.dumps(job_requirements or {}, indent=2)}
+""".strip()
+
+        try:
+            raw_response = client.generate_content(prompt)
+            llm_report = self._extract_json_payload(raw_response)
+            return self._coerce_to_fixed_schema(llm_report, deterministic_report)
+        except Exception as e:
+            logger.warning(f"LLM report structuring failed, using deterministic report: {e}")
+            return deterministic_report
     
     def create_tasks(self):
         """Create tasks for the summarization agent"""
@@ -1249,8 +1418,8 @@ Based on comprehensive AI-powered analysis across {sources_count} verified onlin
                 primary_ranking = self._rank_candidates(candidate_profiles, job_requirements)
                 alternative_rankings = self._generate_alternative_rankings(candidate_profiles, job_requirements)
             
-            # Combine into comprehensive report
-            report = {
+            # Build deterministic report first, then normalize to fixed schema with LLM.
+            deterministic_report = {
                 'executive_summary': comparative_report.get('executive_summary', ''),
                 'candidate_profiles': candidate_profiles,
                 'candidate_pool_analysis': comparative_report.get('candidate_pool_analysis', {}),
@@ -1267,8 +1436,8 @@ Based on comprehensive AI-powered analysis across {sources_count} verified onlin
                 'metrics': comparative_report.get('metrics', {}),
                 'generation_timestamp': datetime.now().isoformat()
             }
-            
-            return report
+
+            return self._llm_structure_report(deterministic_report, job_requirements)
             
         except Exception as e:
             logger.error(f"Error generating comprehensive report: {str(e)}")
