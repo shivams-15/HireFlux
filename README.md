@@ -9,7 +9,6 @@ An AI-powered HR recruitment system using a team of specialized agents to analyz
 - 🔍 **Free Web Research**: Automatic candidate research across GitHub, LinkedIn, portfolios, and more—no API keys needed
 - ✅ **Cross-Platform Verification**: Validates candidate information across multiple sources
 - 📊 **Comprehensive Reporting**: Detailed profiles with verified sources, skills assessment, and match scores
-- 🌐 **Modern Web Interface**: Next.js frontend with real-time progress tracking
 - 🚀 **FastAPI Backend**: High-performance asynchronous processing
 
 ## 🎯 Agent Team
