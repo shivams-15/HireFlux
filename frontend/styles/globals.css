@@ -64,4 +64,62 @@
   .markdown-body code {
     @apply px-1 py-0.5 rounded bg-neutral-100 text-neutral-800 text-[0.85em];
   }
+
+  /* ── Report markdown prose ─────────────────────────────── */
+  .report-markdown {
+    @apply text-neutral-700 leading-relaxed;
+  }
+
+  .report-markdown p {
+    @apply mb-3 text-sm;
+  }
+
+  .report-markdown strong {
+    @apply text-neutral-900 font-semibold;
+  }
+
+  .report-markdown ul,
+  .report-markdown ol {
+    @apply mb-3 pl-5 space-y-1;
+  }
+
+  .report-markdown li {
+    @apply text-sm text-neutral-600;
+  }
+
+  .report-markdown h1 {
+    @apply text-lg font-bold text-neutral-900 mt-5 mb-3;
+  }
+
+  .report-markdown h2 {
+    @apply text-base font-bold text-neutral-900 mt-4 mb-2;
+  }
+
+  .report-markdown h3 {
+    @apply text-sm font-bold text-neutral-800 mt-3 mb-1.5;
+  }
+
+  .report-markdown blockquote {
+    @apply border-l-[3px] border-primary-300 pl-4 italic text-neutral-500 my-3;
+  }
+
+  .report-markdown a {
+    @apply text-primary-700 hover:text-primary-800 underline underline-offset-2;
+  }
+
+  .report-markdown hr {
+    @apply my-4 border-neutral-100;
+  }
+
+  .report-markdown table {
+    @apply w-full text-sm border-collapse mb-3;
+  }
+
+  .report-markdown th {
+    @apply bg-slate-50 text-left px-3 py-2 font-semibold text-neutral-700 border border-slate-200;
+  }
+
+  .report-markdown td {
+    @apply px-3 py-2 border border-slate-100 text-neutral-600;
+  }
 }

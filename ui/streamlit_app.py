@@ -534,7 +534,7 @@ def display_results(results: dict):
         display_top_candidates(candidate_profiles[:5])
     
     # Detailed Analysis
-    with st.expander("📈 Detailed Analysis", expanded=False):
+    with st.expander("� Detailed Analysis", expanded=False):
         detailed_analysis = final_report.get('detailed_analysis', {})
         if isinstance(detailed_analysis, str):
             try:
@@ -544,7 +544,7 @@ def display_results(results: dict):
         display_detailed_analysis(detailed_analysis)
     
     # All Candidates
-    with st.expander("👥 All Candidates", expanded=False):
+    with st.expander("� All Candidates", expanded=False):
         display_all_candidates(candidate_profiles)
 
 def display_executive_summary(executive_summary):
