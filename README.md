@@ -301,10 +301,3 @@ Contributions welcome! Areas for enhancement:
 ## 📄 License
 
 [License information here]
-
-## 🙏 Acknowledgments
-
-- Google Gemini for powerful AI capabilities
-- DuckDuckGo for free web search
-- CrewAI for multi-agent orchestration
-- Next.js and FastAPI communities
