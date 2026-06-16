@@ -132,13 +132,6 @@ Required columns:
 - `CV URL` or `cv_url`: URL to resume (Google Docs, PDF link)
 - `Email` (optional): Contact email
 
-## 🔬 AI Models Used
-
-- **Gemini 3.1 Flash Lite**: Document parsing, resume extraction (ultra-fast, budget-friendly)
-- **Gemini 3.0 Pro**: Web research analysis, candidate insights (balanced performance)
-
-Both models are highly cost-effective with generous free tiers!
-
 ## 📊 What You Get
 
 ### Comprehensive Candidate Reports Include:
