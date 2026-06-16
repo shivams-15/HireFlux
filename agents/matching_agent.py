@@ -30,6 +30,7 @@ class MatchingAgent:
         )
     
     def create_tasks(self, job_description: str, processed_candidates: List[Dict]) -> List[Task]:
+        """Create tasks for candidate matching"""
         
         analyze_job_task = Task(
             description=f"""Analyze the job description using advanced AI techniques to extract and structure all requirements.
